@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parallel PDF Text Extractor | BCS702 Parallel Computing</title>
+  
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- Chart.js for Execution Time Visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Header Navigation -->
+  <header>
+    <div class="container header-inner">
+      <div class="logo-badge">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>Parallel PDF Text Extractor</h1>
+          <span>MULTIPROCESSING ENGINE</span>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        <span class="badge badge-course" title="Course Subject">
+          🎓 BCS702 Parallel Computing
+        </span>
+        <span class="badge badge-hardware" title="Hardware Logical Cores">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+            <rect x="9" y="9" width="6" height="6"></rect>
+            <line x1="9" y1="1" x2="9" y2="4"></line>
+            <line x1="15" y1="1" x2="15" y2="4"></line>
+            <line x1="9" y1="20" x2="9" y2="23"></line>
+            <line x1="15" y1="20" x2="15" y2="23"></line>
+            <line x1="20" y1="9" x2="23" y2="9"></line>
+            <line x1="20" y1="14" x2="23" y2="14"></line>
+            <line x1="1" y1="9" x2="4" y2="9"></line>
+            <line x1="1" y1="14" x2="4" y2="14"></line>
+          </svg>
+          {{ cpu_cores }} CPU Cores Available
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <div class="container main-content">
+
+    <!-- Flash Alert Container -->
+    <div id="alertContainer">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'error' if category == 'error' else 'success' }}">
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+    </div>
+
+    <!-- Experiment Configuration Card -->
+    <div class="card">
+      <form id="extractorForm" action="{{ url_for('extract') }}" method="POST" enctype="multipart/form-data">
+
+        <!-- A. Upload Custom PDF -->
+        <div class="form-group">
+          <div class="upload-zone" id="dropZone" onclick="document.getElementById('pdfFileInput').click()">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <h4>Click or Drag & Drop PDF Document Here</h4>
+            <p>Only standard PDF files (.pdf) are supported.</p>
+            <div id="chosenFileInfo" class="file-chosen-info"></div>
+          </div>
+          <input type="file" name="pdf_file" id="pdfFileInput" accept=".pdf" style="display: none;" onchange="handleFileSelected(this)">
+        </div>
+
+        <!-- B. Search Keyword or Phrase -->
+        <div class="form-group">
+          <label class="form-label" for="searchTermInput">Search Keyword or Phrase</label>
+          <input type="text" 
+                 name="search_term" 
+                 id="searchTermInput" 
+                 class="input-text" 
+                 placeholder="Enter word or phrase to find in the uploaded PDF..." 
+                 value="{{ search_term if search_term else '' }}" 
+                 required>
+        </div>
+
+        <!-- C. Worker Processes -->
+        <div class="form-group">
+          <div class="worker-header">
+            <label class="form-label">Worker Processes</label>
+            <span class="cpu-validation-note" id="cpuValidationNote">
+              (System: {{ cpu_cores }} CPU cores available)
+            </span>
+          </div>
+          <input type="hidden" name="num_workers" id="numWorkersInput" value="{{ num_workers if num_workers else 4 }}">
+          <div class="pill-group">
+            <button type="button" class="pill-btn {{ 'active' if num_workers == 1 else '' }}" onclick="setWorkers(1)">1</button>
+            <button type="button" class="pill-btn {{ 'active' if num_workers == 2 else '' }}" onclick="setWorkers(2)">2</button>
+            <button type="button" class="pill-btn {{ 'active' if not num_workers or num_workers == 4 else '' }}" onclick="setWorkers(4)">4</button>
+            <button type="button" class="pill-btn {{ 'active' if num_workers == 8 else '' }}" onclick="setWorkers(8)">8</button>
+          </div>
+        </div>
+
+        <!-- D. Run Button -->
+        <button type="submit" class="btn-submit" id="submitBtn">
+          <span id="btnIcon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </span>
+          <span id="btnSpinner" class="spinner" style="display: none;"></span>
+          <span id="btnText">Run Sequential & Parallel Extraction</span>
+        </button>
+
+      </form>
+    </div>
+
+    <!-- Results Section -->
+    <div id="resultsWrapper" class="results-container" style="{{ 'display: flex;' if results else 'display: none;' }}">
+      {% if results %}
+        {% include 'results_partial.html' ignore missing %}
+      {% endif %}
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <p>BCS702 Parallel Computing | Team: B_T7 | Parallel PDF Text Extractor</p>
+    </footer>
+
+  </div>
+
+  <!-- Client-side Logic -->
+  <script>
+    let myChart = null;
+    const systemCpuCores = {{ cpu_cores|default(4) }};
+
+    // Worker Selection (1, 2, 4, 8) with Hardware Validation
+    function setWorkers(num) {
+      document.getElementById('numWorkersInput').value = num;
+      const pills = document.querySelectorAll('.pill-group .pill-btn');
+      pills.forEach(p => {
+        p.classList.toggle('active', parseInt(p.textContent.trim()) === num);
+      });
+
+      const note = document.getElementById('cpuValidationNote');
+      if (num > systemCpuCores) {
+        note.textContent = `(Note: ${num} workers requested exceeds ${systemCpuCores} CPU cores; threads will be time-shared)`;
+        note.classList.add('note-warn');
+      } else {
+        note.textContent = `(System: ${systemCpuCores} CPU cores available)`;
+        note.classList.remove('note-warn');
+      }
+    }
+
+    // File Selection Feedback
+    function handleFileSelected(input) {
+      const info = document.getElementById('chosenFileInfo');
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const sizeFormatted = (file.size / 1024).toFixed(1);
+        info.innerHTML = `
+          <span class="file-chip">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+              <polyline points="13 2 13 9 20 9"></polyline>
+            </svg>
+            <strong>${escapeHtml(file.name)}</strong> (${sizeFormatted} KB)
+          </span>
+        `;
+      } else {
+        info.innerHTML = '';
+      }
+    }
+
+    // Drag & Drop
+    const dropZone = document.getElementById('dropZone');
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      }, false);
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+      }, false);
+    });
+    dropZone.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        const fileInput = document.getElementById('pdfFileInput');
+        fileInput.files = files;
+        handleFileSelected(fileInput);
+      }
+    });
+
+    // Form Submission (AJAX)
+    const form = document.getElementById('extractorForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnSpinner = document.getElementById('btnSpinner');
+    const btnIcon = document.getElementById('btnIcon');
+    const btnText = document.getElementById('btnText');
+    const alertContainer = document.getElementById('alertContainer');
+    const resultsWrapper = document.getElementById('resultsWrapper');
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const term = document.getElementById('searchTermInput').value.trim();
+      const fileInput = document.getElementById('pdfFileInput');
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        showAlert('Please select or drop a PDF document to upload.', 'error');
+        return;
+      }
+
+      if (!term) {
+        showAlert('Please enter a keyword or phrase to search.', 'error');
+        return;
+      }
+
+      // UI Loading state
+      submitBtn.disabled = true;
+      btnSpinner.style.display = 'inline-block';
+      btnIcon.style.display = 'none';
+      btnText.textContent = 'Processing PDF (Sequential & Parallel Multiprocessing)...';
+      alertContainer.innerHTML = '';
+
+      const formData = new FormData(form);
+
+      try {
+        const response = await fetch('/extract', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.status === 'error') {
+          showAlert(data.message || 'An error occurred during extraction.', 'error');
+          return;
+        }
+
+        // Render Results Dashboard
+        renderResultsDashboard(data);
+        resultsWrapper.style.display = 'flex';
+        resultsWrapper.scrollIntoView({ behavior: 'smooth' });
+
+      } catch (err) {
+        showAlert('Network or execution error: ' + err.message, 'error');
+      } finally {
+        submitBtn.disabled = false;
+        btnSpinner.style.display = 'none';
+        btnIcon.style.display = 'inline-block';
+        btnText.textContent = 'Run Sequential & Parallel Extraction';
+      }
+    });
+
+    function showAlert(msg, category = 'error') {
+      alertContainer.innerHTML = `
+        <div class="alert alert-${category}">
+          <span>${msg}</span>
+        </div>
+      `;
+    }
+
+    function renderResultsDashboard(data) {
+      const m = data.metrics;
+      const v = data.verification;
+      const p = data.parallel;
+      const s = data.sequential;
+
+      const speedupClass = m.speedup > 1.05 ? 'fast' : (m.speedup < 0.95 ? 'slow' : '');
+      const bannerClass = v.is_verified ? 'passed' : 'failed';
+      const statusTitle = v.is_verified ? 'Verification Passed: 100% Identical Output' : 'Verification Discrepancy Detected';
+
+      let html = `
+        <!-- A. Correctness Verification -->
+        <div class="verification-banner ${bannerClass}">
+          <div class="status-left">
+            <div class="status-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                ${v.is_verified ? '<polyline points="20 6 9 17 4 12"></polyline>' : '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>'}
+              </svg>
+            </div>
+            <div class="status-text">
+              <h3>${statusTitle}</h3>
+              <p>${escapeHtml(v.message)}</p>
+            </div>
+          </div>
+          <span class="status-chip">${v.is_verified ? '100% VERIFIED' : 'MISMATCH'}</span>
+        </div>
+
+        <!-- B. Performance Summary (6 Compact Cards) -->
+        <div class="metrics-grid">
+          
+          <div class="metric-card">
+            <div class="metric-title">Sequential Execution Time</div>
+            <div class="metric-value">${s.time_ms} <span class="metric-unit">ms</span></div>
+            <div class="metric-sub">${s.time_sec} seconds (1 worker)</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Parallel Execution Time</div>
+            <div class="metric-value" style="color: #34d399;">${p.time_ms} <span class="metric-unit">ms</span></div>
+            <div class="metric-sub">${p.time_sec} seconds (${p.workers_used} workers)</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Speedup</div>
+            <div class="metric-value metric-speedup ${speedupClass}">${m.speedup}x</div>
+            <div class="metric-sub">Sequential / Parallel</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Parallel Efficiency</div>
+            <div class="metric-value" style="color: #a78bfa;">${m.efficiency_percent}%</div>
+            <div class="metric-sub">(Speedup / ${p.workers_used}) × 100</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Worker Processes</div>
+            <div class="metric-value" style="color: #38bdf8;">${p.workers_used}</div>
+            <div class="metric-sub">${data.total_pages} total document pages</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-title">Keyword Occurrences</div>
+            <div class="metric-value" style="color: #fbbf24;">${data.total_matches}</div>
+            <div class="metric-sub">Across ${data.matching_pages.length} matching page(s)</div>
+          </div>
+
+        </div>
+
+        <!-- C & D. Execution Time Comparison & Worker Partitioning -->
+        <div class="viz-grid">
+          
+          <!-- C & E. Combined Execution Time Comparison Bar Chart and Experimental Analysis -->
+          <div class="chart-box combined-chart-box">
+            <div class="box-header">
+              <span>Execution Time Comparison (ms)</span>
+              <span class="box-sub">Lower is faster</span>
+            </div>
+            <div style="position: relative; height: 210px;">
+              <canvas id="perfChart"></canvas>
+            </div>
+
+            <!-- Divider separating chart from analysis -->
+            <div class="analysis-divider"></div>
+
+            <!-- Experimental Analysis directly below chart inside same outer container -->
+            <div class="inline-analysis">
+              <div class="analysis-header">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                <span>Experimental Analysis</span>
+              </div>
+              <div class="analysis-desc">
+                ${escapeHtml(m.observation)}
+              </div>
+            </div>
+          </div>
+
+          <!-- D. Worker Workload and Partitioning -->
+          <div class="chart-box" style="height: auto; min-height: 270px;">
+            <div class="box-header">
+              <span>Worker Workload & Partitioning</span>
+              <span class="box-sub">${p.workers_used} active workers</span>
+            </div>
+            <div class="workers-list">
+              ${p.worker_details.map(w => `
+                <div class="worker-row">
+                  <div class="worker-id">
+                    <span class="worker-dot"></span>
+                    Worker ${w.worker_id}
+                  </div>
+                  <div class="worker-range">Pages: <strong>${escapeHtml(w.page_range)}</strong> (${w.pages_count} pgs)</div>
+                  <div class="worker-matches">${w.matches_found} matches</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+        </div>
+
+        <!-- F. Matching Pages and Relevant Snippets -->
+        <div class="card matches-section">
+          <h3 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <circle cx="11" cy="14" r="3"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            Matching Pages & Relevant Snippets (${data.matching_pages.length} Pages with Hits)
+          </h3>
+
+          ${data.matching_pages.length === 0 ? `
+            <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.9rem;">
+              No occurrences of "<strong>${escapeHtml(data.search_term)}</strong>" found in this PDF document.
+            </div>
+          ` : `
+            <div>
+              ${data.matching_pages.map(page => `
+                <div class="match-item">
+                  <div class="match-header">
+                    <span class="match-page-badge">Page ${page.page_number}</span>
+                    <span class="match-count-badge">${page.match_count} occurrence(s) found</span>
+                  </div>
+                  <div>
+                    ${page.snippets.map(s => `
+                      <div class="snippet-box">${highlightSnippet(s, data.search_term)}</div>
+                    `).join('')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+      `;
+
+      resultsWrapper.innerHTML = html;
+      initChart(s.time_ms, p.time_ms, p.workers_used);
+    }
+
+    function initChart(seqMs, parMs, workersCount) {
+      const ctx = document.getElementById('perfChart');
+      if (!ctx) return;
+
+      if (myChart) {
+        myChart.destroy();
+      }
+
+      myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Sequential (1 Worker)', `Parallel (${workersCount} Workers)`],
+          datasets: [{
+            label: 'Execution Time (ms)',
+            data: [seqMs, parMs],
+            backgroundColor: [
+              'rgba(245, 158, 11, 0.75)',
+              'rgba(16, 185, 129, 0.75)'
+            ],
+            borderColor: [
+              '#f59e0b',
+              '#10b981'
+            ],
+            borderWidth: 1.5,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` Execution Time: ${context.parsed.y.toFixed(2)} ms`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(255, 255, 255, 0.06)' },
+              ticks: {
+                color: '#94a3b8',
+                callback: function(val) { return val + ' ms'; }
+              }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: '#cbd5e1', font: { weight: '600' } }
+            }
+          }
+        }
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function highlightSnippet(snippet, keyword) {
+      if (!snippet || !keyword) return escapeHtml(snippet);
+      const escaped = escapeHtml(snippet);
+      const escapedKeyword = escapeHtml(keyword);
+      const regex = new RegExp(`(${escapedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      return escaped.replace(regex, '<mark>$1</mark>');
+    }
+  </script>
+</body>
+</html>

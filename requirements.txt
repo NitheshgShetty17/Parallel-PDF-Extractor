@@ -1,0 +1,6 @@
+# BCS702 Parallel Computing Project Dependencies
+# Parallel PDF Text Extractor
+Flask>=3.0.0
+pypdf>=5.0.0
+reportlab>=4.0.0
+Werkzeug>=3.0.0

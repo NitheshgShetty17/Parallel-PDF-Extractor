@@ -1,0 +1,172 @@
+<!-- results_partial.html: Server-side rendered fallback for non-AJAX requests -->
+{% if results %}
+{% set m = results.metrics %}
+{% set v = results.verification %}
+{% set p = results.parallel %}
+{% set s = results.sequential %}
+
+<!-- A. Correctness Verification -->
+<div class="verification-banner {{ 'passed' if v.is_verified else 'failed' }}">
+  <div class="status-left">
+    <div class="status-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        {% if v.is_verified %}
+          <polyline points="20 6 9 17 4 12"></polyline>
+        {% else %}
+          <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+        {% endif %}
+      </svg>
+    </div>
+    <div class="status-text">
+      <h3>{{ 'Verification Passed: 100% Identical Output' if v.is_verified else 'Verification Discrepancy Detected' }}</h3>
+      <p>{{ v.message }}</p>
+    </div>
+  </div>
+  <span class="status-chip">{{ '100% VERIFIED' if v.is_verified else 'MISMATCH' }}</span>
+</div>
+
+<!-- B. Performance Summary (6 Compact Cards) -->
+<div class="metrics-grid">
+  <div class="metric-card">
+    <div class="metric-title">Sequential Execution Time</div>
+    <div class="metric-value">{{ s.time_ms }} <span class="metric-unit">ms</span></div>
+    <div class="metric-sub">{{ s.time_sec }} seconds (1 worker)</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-title">Parallel Execution Time</div>
+    <div class="metric-value" style="color: #34d399;">{{ p.time_ms }} <span class="metric-unit">ms</span></div>
+    <div class="metric-sub">{{ p.time_sec }} seconds ({{ p.workers_used }} workers)</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-title">Speedup</div>
+    <div class="metric-value metric-speedup {{ 'fast' if m.speedup > 1.05 else ('slow' if m.speedup < 0.95 else '') }}">{{ m.speedup }}x</div>
+    <div class="metric-sub">Sequential / Parallel</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-title">Parallel Efficiency</div>
+    <div class="metric-value" style="color: #a78bfa;">{{ m.efficiency_percent }}%</div>
+    <div class="metric-sub">(Speedup / {{ p.workers_used }}) × 100</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-title">Worker Processes</div>
+    <div class="metric-value" style="color: #38bdf8;">{{ p.workers_used }}</div>
+    <div class="metric-sub">{{ results.total_pages }} total document pages</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-title">Keyword Occurrences</div>
+    <div class="metric-value" style="color: #fbbf24;">{{ results.total_matches }}</div>
+    <div class="metric-sub">Across {{ results.matching_pages|length }} matching page(s)</div>
+  </div>
+</div>
+
+<!-- C & D. Execution Time Comparison & Worker Partitioning -->
+<div class="viz-grid">
+  <!-- C & E. Combined Execution Time Comparison Bar Chart and Experimental Analysis -->
+  <div class="chart-box combined-chart-box">
+    <div class="box-header">
+      <span>Execution Time Comparison (ms)</span>
+      <span class="box-sub">Lower is faster</span>
+    </div>
+    <!-- CSS Bar Chart Fallback -->
+    <div class="css-chart">
+      <div class="bar-item">
+        <div class="bar-labels">
+          <span>Sequential (1 Worker)</span>
+          <span>{{ s.time_ms }} ms</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill bar-seq" style="width: {{ 100 if s.time_ms >= p.time_ms else ((s.time_ms / p.time_ms * 100)|round) }}%;">
+            {{ s.time_ms }} ms
+          </div>
+        </div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-labels">
+          <span>Parallel ({{ p.workers_used }} Workers)</span>
+          <span>{{ p.time_ms }} ms</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill bar-par" style="width: {{ 100 if p.time_ms >= s.time_ms else ((p.time_ms / s.time_ms * 100)|round) }}%;">
+            {{ p.time_ms }} ms
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Divider between chart and analysis -->
+    <div class="analysis-divider"></div>
+
+    <!-- Experimental Analysis directly below chart inside same outer container -->
+    <div class="inline-analysis">
+      <div class="analysis-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+        <span>Experimental Analysis</span>
+      </div>
+      <div class="analysis-desc">
+        {{ m.observation }}
+      </div>
+    </div>
+  </div>
+
+  <!-- D. Worker Workload & Partitioning -->
+  <div class="chart-box" style="height: auto; min-height: 270px;">
+    <div class="box-header">
+      <span>Worker Workload & Partitioning</span>
+      <span class="box-sub">{{ p.workers_used }} active workers</span>
+    </div>
+    <div class="workers-list">
+      {% for w in p.worker_details %}
+        <div class="worker-row">
+          <div class="worker-id">
+            <span class="worker-dot"></span>
+            Worker {{ w.worker_id }}
+          </div>
+          <div class="worker-range">Pages: <strong>{{ w.page_range }}</strong> ({{ w.pages_count }} pgs)</div>
+          <div class="worker-matches">{{ w.matches_found }} matches</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- F. Matching Pages & Relevant Snippets -->
+<div class="card matches-section">
+  <h3 class="card-title">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <circle cx="11" cy="14" r="3"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+    Matching Pages & Relevant Snippets ({{ results.matching_pages|length }} Pages with Hits)
+  </h3>
+
+  {% if results.matching_pages|length == 0 %}
+    <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.9rem;">
+      No occurrences of "<strong>{{ results.search_term }}</strong>" found in this PDF document.
+    </div>
+  {% else %}
+    <div>
+      {% for page in results.matching_pages %}
+        <div class="match-item">
+          <div class="match-header">
+            <span class="match-page-badge">Page {{ page.page_number }}</span>
+            <span class="match-count-badge">{{ page.match_count }} occurrence(s) found</span>
+          </div>
+          <div>
+            {% for s in page.snippets %}
+              <div class="snippet-box">{{ s }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endif %}
